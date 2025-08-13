@@ -1,0 +1,40 @@
+# ----- Unity generated stuff (never commit) -----
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+sysinfo.txt
+
+# ----- IDE / tooling -----
+.vs/
+.idea/
+*.sln
+*.csproj
+*.user
+*.userprefs
+*.suo
+*.tmp
+*.svd
+*.pidb
+*.booproj
+*.DotSettings.user
+
+# ----- OS noise -----
+.DS_Store
+Thumbs.db
+
+# ----- Unity packages / archives / big outputs -----
+*.unitypackage
+*.apk
+*.aab
+*.app
+*.ipa
+*.exe
+*.dll
+*.pdb
+*.mdb
+*.zip
