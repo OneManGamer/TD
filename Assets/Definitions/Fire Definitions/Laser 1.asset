@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b4f7bdb8a08f064ab07d839c49ca812, type: 3}
+  m_Name: Laser 1
+  m_EditorClassIdentifier: 
+  damage: 10
+  pierceCount: 0
+  range: 12
+  radius: 0
+  drawLine: 1
+  lineDuration: 0.05
+  lineWidth: 0.035
+  lineMaterial: {fileID: 0}
+  hitMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
