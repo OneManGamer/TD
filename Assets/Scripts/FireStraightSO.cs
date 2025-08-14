@@ -5,9 +5,9 @@ using UnityEngine;
 public class FireStraightSO : FireBehaviourSO
 {
     [Header("Projectile")]
-    public GameObject projectilePrefab;
+    public ArrowProjectile projectilePrefab;   // was GameObject
     public float speed = 24f;
-    public bool stickOnHit = true;   // <— toggle in Inspector
+    public bool stickOnHit = true;             // toggle in Inspector
 
     public override void FireTick(TowerShooter shooter, Transform target)
     {
@@ -18,31 +18,31 @@ public class FireStraightSO : FireBehaviourSO
 
         ApplyMissCone(shooter, origin, ref aimPoint);
 
-        GameObject go = SimplePool.Instance
-            ? SimplePool.Instance.Get(projectilePrefab, origin, Quaternion.identity)
+        // Spawn via ProjectilePool (fallback to Instantiate if pool is missing)
+        ArrowProjectile proj = ProjectilePool.Instance
+            ? ProjectilePool.Instance.Spawn(projectilePrefab, origin, Quaternion.identity)
             : Object.Instantiate(projectilePrefab, origin, Quaternion.identity);
 
-        var proj = go.GetComponent<ArrowProjectile>();
         if (!proj)
         {
-            Debug.LogError("Projectile prefab missing ArrowProjectile.");
-            if (!SimplePool.Instance) Object.Destroy(go);
+            Debug.LogError("FireStraightSO: projectile prefab must have ArrowProjectile.");
             return;
         }
 
-        proj.sourcePrefab = projectilePrefab;
-        proj.stickOnHit = stickOnHit; // <— enable sticking
+        // Configure projectile
+        proj.stickOnHit = stickOnHit;
 
         float dmg = shooter.definition ? shooter.definition.baseDamage : 10f;
         DamageType type = shooter.definition ? shooter.definition.damageType : DamageType.Physical;
         proj.SetDamage(dmg, type);
 
+        // Launch
         proj.LaunchToward(origin, aimPoint, speed);
 
         if (shooter.sfxShot) shooter.sfxShot.Play();
     }
 
-    // ——— helpers (unchanged from your current version) ———
+    // ——— helpers (unchanged) ———
     Vector3 ComputeAimPoint(TowerShooter shooter, Transform target, Vector3 origin)
     {
         Vector3 basePoint = target.position + Vector3.up * 0.6f;

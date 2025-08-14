@@ -42,6 +42,12 @@ public class HealthBarUIOverlay : MonoBehaviour
         }
     }
 
+    void SetVisible(bool show)
+    {
+        if (bg)   bg.enabled = show;
+        if (fill) fill.enabled = show;
+    }
+
     void OnEnable()
     {
         TryAutoWire();
@@ -93,16 +99,31 @@ public class HealthBarUIOverlay : MonoBehaviour
 
     void HandleDeath()
     {
-        Destroy(gameObject); // remove this UI bar instance
+        // Death destroys the UI bar instance (goal reach/pooling is handled in LateUpdate)
+        Destroy(gameObject);
     }
 
     void LateUpdate()
     {
-        // If the target was despawned/reached goal and destroyed, clean up the bar
-        if (!target || !canvas || !_rt || !_canvasRT)
+        // If the target was destroyed, clean up the bar
+        if (!target)
         {
             Destroy(gameObject);
             return;
+        }
+
+        // If the target is pooled/inactive, hide and skip work this frame
+        if (!target.gameObject.activeInHierarchy)
+        {
+            SetVisible(false);
+            return;
+        }
+
+        if (!canvas || !_rt || !_canvasRT)
+        {
+            // Try to auto-wire once; if still missing, bail
+            TryAutoWire();
+            if (!canvas || !_rt || !_canvasRT) return;
         }
 
         // In case wiring happened after enable, keep trying to subscribe once
@@ -128,6 +149,9 @@ public class HealthBarUIOverlay : MonoBehaviour
         }
 
         _rt.anchoredPosition = localPos;
+
+        // Ensure visible when active
+        SetVisible(true);
 
         // 4) Fill amount & visibility
         if (health)

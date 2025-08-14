@@ -5,7 +5,7 @@ using UnityEngine;
 public class FireBallisticSO : FireBehaviourSO
 {
     [Header("Projectile")]
-    public GameObject projectilePrefab;
+    public ArrowProjectile projectilePrefab;   // was GameObject
 
     [Header("Ballistics")]
     public float launchSpeed = 18f;
@@ -26,25 +26,25 @@ public class FireBallisticSO : FireBehaviourSO
         // Apply intentional miss if requested by the definition
         ApplyMissCone(shooter, origin, ref aim);
 
-        GameObject go = SimplePool.Instance
-            ? SimplePool.Instance.Get(projectilePrefab, origin, Quaternion.identity)
+        // Pool-aware spawn (fallback to Instantiate)
+        ArrowProjectile proj = ProjectilePool.Instance
+            ? ProjectilePool.Instance.Spawn(projectilePrefab, origin, Quaternion.identity)
             : Object.Instantiate(projectilePrefab, origin, Quaternion.identity);
 
-        var proj = go.GetComponent<ArrowProjectile>();
         if (!proj)
         {
-            Debug.LogError("Projectile prefab missing ArrowProjectile.");
-            if (!SimplePool.Instance) Object.Destroy(go);
+            Debug.LogError("FireBallisticSO: projectile prefab must have ArrowProjectile.");
             return;
         }
 
-        proj.sourcePrefab = projectilePrefab;
+        // Configure projectile
         proj.stickOnHit = stickOnHit;
 
         float dmg = shooter.definition ? shooter.definition.baseDamage : 10f;
         DamageType type = shooter.definition ? shooter.definition.damageType : DamageType.Physical;
         proj.SetDamage(dmg, type);
 
+        // Try ballistic first; if no solution, fire straight
         bool ok = proj.TryLaunchBallistic(origin, aim, launchSpeed, gravity, highArc);
         if (!ok) proj.LaunchToward(origin, aim, launchSpeed);
 

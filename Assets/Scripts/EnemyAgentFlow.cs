@@ -3,7 +3,8 @@ using UnityEngine;
 
 [RequireComponent(typeof(Health))]
 [RequireComponent(typeof(VelocityTracker))]
-public class EnemyAgentFlow : MonoBehaviour
+public class EnemyAgentFlow : MonoBehaviour, IPoolable
+
 {
     [Header("Movement")]
     public float moveSpeed = 2.2f;
@@ -12,7 +13,7 @@ public class EnemyAgentFlow : MonoBehaviour
     public float lookAheadCells = 1.2f;
     public float cornerMinSpeedFactor = 0.7f;
     public float cornerEaseStartDeg = 8f;
-    public float cornerEaseEndDeg   = 50f;
+    public float cornerEaseEndDeg = 50f;
 
     [Header("Stay centered in corridors")]
     public float centerBiasWeight = 0.65f;
@@ -33,7 +34,7 @@ public class EnemyAgentFlow : MonoBehaviour
     [Header("Following brake")]
     public float frontConeAngle = 60f;
     public float brakeStartDist = 1.2f;
-    public float brakeStopDist  = 0.5f;
+    public float brakeStopDist = 0.5f;
     public float brakeMaxFactor = 0.35f;
 
     const float MaxStepFracOfCell = 0.40f;
@@ -46,7 +47,41 @@ public class EnemyAgentFlow : MonoBehaviour
         _rb = GetComponent<Rigidbody>();
         if (_rb) { _rb.isKinematic = true; _rb.useGravity = false; } // we move by transform
     }
+public void OnSpawned()  // IPoolable
+{
+    // Ensure the enemy starts fresh when reused from the pool.
+    var h = GetComponent<Health>();
+    if (h)
+    {
+        h.currentHP = Mathf.Max(1f, h.maxHP);
+    }
 
+    // If you drive stats from an EnemyDefinitionSO via EnemySetup, reapply here too.
+    var setup = GetComponent<EnemySetup>();
+    if (setup && setup.definition)
+    {
+        // Health
+        var d = setup.definition;
+        if (h)
+        {
+            h.maxHP = Mathf.Max(1f, d.maxHP);
+            h.currentHP = h.maxHP;
+            h.resistances = d.resistances;
+        }
+
+        // Move speed
+        // EnemySetup already writes in Awake on first spawn.  We mirror it for pooled spawns.
+        var mover = this; // EnemyAgentFlow
+        mover.moveSpeed = d.moveSpeed * Mathf.Max(0.01f, setup.moveSpeedMultiplier);
+    }
+
+    enabled = true;
+}
+
+public void OnRecycled()  // IPoolable
+{
+    enabled = false;
+}
     void Update()
     {
         var grid = GridService.Instance;
@@ -62,8 +97,9 @@ public class EnemyAgentFlow : MonoBehaviour
 
         if (curCell == grid.goalCell)
         {
+            // Reached the goal.  Notify level, then recycle with safe fallback.
             LevelController.Instance.OnEnemyReachedGoal();
-            Destroy(gameObject);
+            if (EnemyPool.Instance != null) EnemyPool.Instance.Recycle(this); else Destroy(gameObject);
             return;
         }
 
@@ -73,9 +109,9 @@ public class EnemyAgentFlow : MonoBehaviour
             flowNow = (grid.CellCenter(grid.goalCell) - transform.position).normalized;
 
         Vector3 aheadPos1 = transform.position + flowNow.normalized * (lookAheadCells * grid.cellSize);
-        Vector3 flowA1    = SampleFlowBilinear(grid, aheadPos1); if (flowA1.sqrMagnitude < 0.0001f) flowA1 = flowNow;
+        Vector3 flowA1 = SampleFlowBilinear(grid, aheadPos1); if (flowA1.sqrMagnitude < 0.0001f) flowA1 = flowNow;
         Vector3 aheadPos2 = aheadPos1 + flowA1.normalized * (0.6f * lookAheadCells * grid.cellSize);
-        Vector3 flowA2    = SampleFlowBilinear(grid, aheadPos2); if (flowA2.sqrMagnitude < 0.0001f) flowA2 = flowA1;
+        Vector3 flowA2 = SampleFlowBilinear(grid, aheadPos2); if (flowA2.sqrMagnitude < 0.0001f) flowA2 = flowA1;
 
         float turnAng = Vector3.Angle(flowNow, flowA1);
         float cornerT = Mathf.InverseLerp(cornerEaseStartDeg, cornerEaseEndDeg, turnAng);
@@ -85,7 +121,7 @@ public class EnemyAgentFlow : MonoBehaviour
         // ---------- center bias ----------
         int cdistCell = grid.Clearance(curCell);
         float nearWallBoost = 1f / (1f + cdistCell);
-        Vector3 cNow   = SampleClearDirBilinear(grid, transform.position);
+        Vector3 cNow = SampleClearDirBilinear(grid, transform.position);
         Vector3 cAhead = SampleClearDirBilinear(grid, aheadPos1);
         Vector3 centerBias = (cNow + cAhead) * 0.5f * (centerBiasWeight * nearWallBoost);
 
@@ -147,7 +183,7 @@ public class EnemyAgentFlow : MonoBehaviour
         newPos = ResolveOverlaps(newPos, grid, Time.deltaTime);
 
         transform.position = newPos;
-        // (Rigidbody stays kinematic; VelocityTracker supplies velocity for aiming)
+        // (Rigidbody stays kinematic.  VelocityTracker supplies velocity for aiming.)
     }
 
     // --- Bilinear sampling helpers (unchanged) ---
@@ -266,12 +302,12 @@ public class EnemyAgentFlow : MonoBehaviour
         for (int r = 1; r <= maxRadius; r++)
         {
             for (int dy = -r; dy <= r; dy++)
-            for (int dx = -r; dx <= r; dx++)
-            {
-                if (Mathf.Abs(dx) != r && Mathf.Abs(dy) != r) continue;
-                var c = new Vector2Int(from.x + dx, from.y + dy);
-                if (grid.InBounds(c) && grid.CanWalk(c)) return c;
-            }
+                for (int dx = -r; dx <= r; dx++)
+                {
+                    if (Mathf.Abs(dx) != r && Mathf.Abs(dy) != r) continue;
+                    var c = new Vector2Int(from.x + dx, from.y + dy);
+                    if (grid.InBounds(c) && grid.CanWalk(c)) return c;
+                }
         }
         return from;
     }

@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class ArrowProjectile : MonoBehaviour
+public class ArrowProjectile : MonoBehaviour, IPoolable
 {
     public enum FlightMode { Straight, Ballistic }
 
@@ -36,7 +36,7 @@ public class ArrowProjectile : MonoBehaviour
     [Tooltip("Make unique material instances on stick to avoid any shared-material tint weirdness.")]
     public bool instantiateMaterialsOnStick = true;
 
-    [HideInInspector] public GameObject sourcePrefab;
+    [HideInInspector] public GameObject sourcePrefab; // legacy; no longer used with ProjectilePool
 
     // runtime
     Vector3 _vel;
@@ -57,7 +57,10 @@ public class ArrowProjectile : MonoBehaviour
     Vector3 _prefabLocalScale;
     bool _scaleCached;
 
+    // layers & colliders reset
     int _stuckLayer = -1;
+    Transform[] _allTransforms;
+    int[] _origLayers;
 
     // ------------ public API ------------
     public void SetDamage(float amt, DamageType type) { baseDamage = amt; damageType = type; }
@@ -70,11 +73,63 @@ public class ArrowProjectile : MonoBehaviour
             _prefabLocalScale = transform.localScale;
             _scaleCached = true;
         }
+
+        // cache transform hierarchy original layers so we can restore after being set to StuckProjectile
+        _allTransforms = GetComponentsInChildren<Transform>(true);
+        _origLayers = new int[_allTransforms.Length];
+        for (int i = 0; i < _allTransforms.Length; i++)
+            _origLayers[i] = _allTransforms[i].gameObject.layer;
+    }
+
+    // IPoolable — called by ProjectilePool BEFORE SetActive(true)
+    public void OnSpawned()
+    {
+        // Restore original layers if we had changed them while stuck.
+        if (_allTransforms != null && _origLayers != null && _allTransforms.Length == _origLayers.Length)
+        {
+            for (int i = 0; i < _allTransforms.Length; i++)
+                _allTransforms[i].gameObject.layer = _origLayers[i];
+        }
+        _stuckLayer = -1;
+
+        // Re-enable all colliders we might have disabled on stick.
+        EnableAllColliders(gameObject);
+
+        // Clear visuals like trails so reused arrows don't smear.
+        var tr = GetComponent<TrailRenderer>();
+        if (tr) tr.Clear();
+
+        // Reset transient state (also done in Launch* for safety)
+        _stuckEnemy = false;
+        _stuckWorld = false;
+        _worldStickTimer = 0f;
+        _carrier = null;
+        if (_carrierHealth != null) _carrierHealth.OnDeath -= HandleCarrierDeath;
+        _carrierHealth = null;
+
+        // Ensure intended prefab scale
+        if (_scaleCached) transform.localScale = _prefabLocalScale;
+
+        enabled = true;
+    }
+
+    public void OnRecycled()
+    {
+        // Unsubscribe and disable behaviour while pooled
+        if (_carrierHealth != null) _carrierHealth.OnDeath -= HandleCarrierDeath;
+        _stuckEnemy = false;
+        _stuckWorld = false;
+        _carrier = null;
+        _carrierHealth = null;
+        enabled = false;
     }
 
     public void LaunchToward(Vector3 origin, Vector3 aimPoint, float launchSpeed)
     {
-        if (_scaleCached) transform.localScale = _prefabLocalScale; // preserve your prefab size
+        // Safety: make sure a direct Instantiate path also resets correctly.
+        OnSpawned();
+
+        if (_scaleCached) transform.localScale = _prefabLocalScale; // preserve prefab size
 
         transform.position = origin;
         Vector3 dir = (aimPoint - origin);
@@ -83,19 +138,13 @@ public class ArrowProjectile : MonoBehaviour
         _vel = dir.normalized * Mathf.Max(0.01f, launchSpeed);
         flightMode = FlightMode.Straight;
         _life = 0f;
-
-        // reset stick state (important for pooling)
-        _stuckEnemy = false;
-        _stuckWorld = false;
-        _worldStickTimer = 0f;
-        _carrier = null;
-        _carrierHealth = null;
-
-        enabled = true;
     }
 
     public bool TryLaunchBallistic(Vector3 origin, Vector3 target, float launchSpeed, float g, bool highArc)
     {
+        // Safety: make sure a direct Instantiate path also resets correctly.
+        OnSpawned();
+
         if (_scaleCached) transform.localScale = _prefabLocalScale;
 
         transform.position = origin;
@@ -121,13 +170,6 @@ public class ArrowProjectile : MonoBehaviour
         flightMode = FlightMode.Ballistic;
         _life = 0f;
 
-        _stuckEnemy = false;
-        _stuckWorld = false;
-        _worldStickTimer = 0f;
-        _carrier = null;
-        _carrierHealth = null;
-
-        enabled = true;
         return true;
     }
 
@@ -138,7 +180,7 @@ public class ArrowProjectile : MonoBehaviour
         {
             if (!_carrier || !_carrier.gameObject.activeInHierarchy)
             {
-                Destroy(gameObject);
+                Despawn();
                 return;
             }
 
@@ -183,7 +225,7 @@ public class ArrowProjectile : MonoBehaviour
 
     void OnDisable()
     {
-        // if pooled, ensure we don't keep stale subscriptions/state
+        // Safety if disabled outside the pool path.
         if (_carrierHealth != null) _carrierHealth.OnDeath -= HandleCarrierDeath;
         _stuckEnemy = false;
         _stuckWorld = false;
@@ -286,8 +328,8 @@ public class ArrowProjectile : MonoBehaviour
 
     void Despawn()
     {
-        if (SimplePool.Instance && sourcePrefab)
-            SimplePool.Instance.Recycle(sourcePrefab, gameObject);
+        if (ProjectilePool.Instance)
+            ProjectilePool.Instance.Recycle(this);
         else
             Destroy(gameObject);
     }
@@ -296,6 +338,12 @@ public class ArrowProjectile : MonoBehaviour
     {
         var cols = go.GetComponentsInChildren<Collider>(true);
         foreach (var c in cols) c.enabled = false;
+    }
+
+    static void EnableAllColliders(GameObject go)
+    {
+        var cols = go.GetComponentsInChildren<Collider>(true);
+        foreach (var c in cols) c.enabled = true;
     }
 
     static void SetLayerRecursively(GameObject go, int layer)

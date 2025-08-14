@@ -5,7 +5,7 @@ using UnityEngine;
 public class FireShotgunSO : FireBehaviourSO
 {
     [Header("Projectile")]
-    public GameObject projectilePrefab;
+    public ArrowProjectile projectilePrefab;   // was GameObject
     public int pellets = 6;
     public float speed = 22f;
     public bool stickOnHit = false;
@@ -34,7 +34,7 @@ public class FireShotgunSO : FireBehaviourSO
 
         // Build an orthonormal basis around the forward direction
         Vector3 right = Vector3.Cross(Vector3.up, forward);
-        if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+        if (right.sqrMagnitude < 1e-6f) right = Vector3.right;
         right.Normalize();
         Vector3 up = Vector3.Cross(forward, right);
 
@@ -48,30 +48,28 @@ public class FireShotgunSO : FireBehaviourSO
             Vector2 r = Random.insideUnitCircle * rad;
             Vector3 dir = (forward + right * r.x + up * r.y).normalized;
 
-            GameObject go = SimplePool.Instance
-                ? SimplePool.Instance.Get(projectilePrefab, origin, Quaternion.LookRotation(dir, Vector3.up))
-                : Object.Instantiate(projectilePrefab, origin, Quaternion.LookRotation(dir, Vector3.up));
+            // Pool-aware spawn (fallback to Instantiate)
+            ArrowProjectile proj = ProjectilePool.Instance
+                ? ProjectilePool.Instance.Spawn(projectilePrefab, origin, Quaternion.identity)
+                : Object.Instantiate(projectilePrefab, origin, Quaternion.identity);
 
-            var proj = go.GetComponent<ArrowProjectile>();
             if (!proj)
             {
-                Debug.LogError("Projectile prefab missing ArrowProjectile.");
-                if (!SimplePool.Instance) Object.Destroy(go);
+                Debug.LogError("FireShotgunSO: projectile prefab must have ArrowProjectile.");
                 continue;
             }
 
-            // Pool bookkeeping & behaviour toggles
-            proj.sourcePrefab = projectilePrefab;
+            // Behaviour toggles
             proj.stickOnHit = stickOnHit;
 
-            // Damage now set via helper (tower is the source of truth)
+            // Per-pellet damage (includes crit if your shooter supports it)
             float baseDmg = shooter.definition ? shooter.definition.baseDamage : 10f;
-            float crit = shooter.RollCrit(); // returns 1f or a multiplier (e.g., 2f)
+            float crit = shooter.RollCrit(); // e.g., 1f for no-crit or 2f for crit
             float pelletDmg = baseDmg * pelletDamageMultiplier * Mathf.Max(1f, crit);
             DamageType type = shooter.definition ? shooter.definition.damageType : DamageType.Physical;
             proj.SetDamage(pelletDmg, type);
 
-            // LaunchToward expects an aim point; using origin + dir preserves our spread direction
+            // LaunchToward with aimpoint computed from our spread direction
             proj.LaunchToward(origin, origin + dir, speed);
         }
 

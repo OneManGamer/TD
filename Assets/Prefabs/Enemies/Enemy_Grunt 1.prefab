@@ -18,6 +18,7 @@ GameObject:
   - component: {fileID: -4157272597539492049}
   - component: {fileID: 2921141517360721804}
   - component: {fileID: 1776933178133659481}
+  - component: {fileID: 4638131302168563957}
   m_Layer: 6
   m_Name: Enemy_Grunt 1
   m_TagString: Enemy
@@ -156,6 +157,8 @@ MonoBehaviour:
   separationMask:
     serializedVersion: 2
     m_Bits: 0
+  resolveOverlapIterations: 2
+  resolveMaxPushPerSecond: 4
   frontConeAngle: 60
   brakeStartDist: 1.2
   brakeStopDist: 0.5
@@ -212,5 +215,17 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1ec4f2311b6293445888d4266e089ad2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &4638131302168563957
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4589600794841658612}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bb41f7bbb3f2fda4389e6d373e2b9041, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 

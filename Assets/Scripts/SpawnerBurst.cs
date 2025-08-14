@@ -5,7 +5,7 @@ public class SpawnerBurst : MonoBehaviour {
     public enum SpawnDistribution { Random, RoundRobinGroups, SplitGroupEvenly }
 
     [Header("What to spawn")]
-    public GameObject enemyPrefab;
+    public EnemyAgentFlow enemyPrefab;
     public int totalEnemies = 30;
 
     [Header("Burst settings")]
@@ -87,7 +87,7 @@ public class SpawnerBurst : MonoBehaviour {
     }
 
     // Always spawns at the exact center of a walkable cell; jitter is clamped to stay inside the cell.
-    void SpawnOne(GameObject prefab, Vector3 basePos) {
+    void SpawnOne(EnemyAgentFlow prefab, Vector3 basePos) {
         var grid = GridService.Instance;
         var cell = grid.WorldToCell(basePos);
 
@@ -103,7 +103,15 @@ public class SpawnerBurst : MonoBehaviour {
         Vector2 j2 = (maxJitter > 0f) ? Random.insideUnitCircle * maxJitter : Vector2.zero;
         Vector3 jitter = new Vector3(j2.x, 0f, j2.y);
 
-        var go = Instantiate(prefab, center + jitter, Quaternion.identity);
-        go.tag = "Enemy";
+        EnemyAgentFlow enemy;
+        if (EnemyPool.Instance != null)
+            enemy = EnemyPool.Instance.Spawn(prefab, center + jitter, Quaternion.identity);
+        else
+            enemy = Instantiate(prefab, center + jitter, Quaternion.identity);
+
+        if (enemy)
+        {
+            enemy.gameObject.tag = "Enemy"; // preserve tag behavior
+        }
     }
 }
