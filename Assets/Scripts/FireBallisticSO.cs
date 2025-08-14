@@ -1,11 +1,11 @@
-// File: FireBallisticSO.cs
+using System.Collections.Generic;
 using UnityEngine;
 
 [CreateAssetMenu(menuName = "TD/Fire/Projectile Ballistic")]
 public class FireBallisticSO : FireBehaviourSO
 {
     [Header("Projectile")]
-    public ArrowProjectile projectilePrefab;   // was GameObject
+    public ArrowProjectile projectilePrefab;
 
     [Header("Ballistics")]
     public float launchSpeed = 18f;
@@ -15,6 +15,9 @@ public class FireBallisticSO : FireBehaviourSO
 
     [Header("Aim")]
     public float aimYOffset = 0.6f;
+
+    [Header("On-Hit Effects")]
+    public List<OnHitEffectSO> onHitEffects;
 
     public override void FireTick(TowerShooter shooter, Transform target)
     {
@@ -37,12 +40,14 @@ public class FireBallisticSO : FireBehaviourSO
             return;
         }
 
-        // Configure projectile
         proj.stickOnHit = stickOnHit;
 
         float dmg = shooter.definition ? shooter.definition.baseDamage : 10f;
         DamageType type = shooter.definition ? shooter.definition.damageType : DamageType.Physical;
         proj.SetDamage(dmg, type);
+
+        // Data-driven effects
+        proj.SetOnHitEffects(onHitEffects);
 
         // Try ballistic first; if no solution, fire straight
         bool ok = proj.TryLaunchBallistic(origin, aim, launchSpeed, gravity, highArc);

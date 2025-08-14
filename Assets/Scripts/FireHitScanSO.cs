@@ -14,39 +14,56 @@ public class FireHitScanSO : FireBehaviourSO
     public bool drawLine = true;
     public float lineDuration = 0.05f;
     public float lineWidth = 0.035f;
-    public Material lineMaterial;
+    public Material lineMaterial;       // assign in inspector to avoid defaulting
+    static Material _defaultLineMat;    // cached once, no per-shot alloc
 
     public override void FireTick(TowerShooter shooter, Transform target)
     {
-        if (!shooter) return;
+        if (!shooter || !shooter.firePoint || !target) return;
 
-        Vector3 from = shooter.firePoint ? shooter.firePoint.position : shooter.transform.position;
-        Vector3 to = target ? target.position + Vector3.up * 0.6f : from + shooter.transform.forward * range;
-        Vector3 dir = (to - from).sqrMagnitude > 0.0001f ? (to - from).normalized : shooter.transform.forward;
+        Vector3 from = shooter.firePoint.position;
+        Vector3 dir  = (target.position + Vector3.up * 0.6f - from).normalized;
 
-        RaycastHit[] hits = radius <= 0f
-            ? Physics.RaycastAll(from, dir, range, hitMask, QueryTriggerInteraction.Ignore)
-            : Physics.SphereCastAll(from, radius, dir, range, hitMask, QueryTriggerInteraction.Ignore);
+        RaycastHit[] hits;
+        int hitCount = 0;
 
-        var ordered = hits.OrderBy(h => h.distance).ToArray();
-        int take = 1 + Mathf.Max(0, pierceCount);
-        int taken = 0;
-
-        float dmg = shooter.definition ? shooter.definition.baseDamage : 10f;
-        var info = new DamageInfo {
-            amount = dmg,
-            type = shooter.definition ? shooter.definition.damageType : DamageType.Physical,
-            critMult = shooter.RollCrit(),
-            source = shooter.gameObject,
-            hitPoint = to
-        };
-
-        foreach (var h in ordered)
+        if (radius <= 0f)
         {
-            Combat.ApplyHit(h.collider, info);
-            if (++taken >= take) break;
+            if (Physics.Raycast(from, dir, out var hit, range, hitMask, QueryTriggerInteraction.Ignore))
+            {
+                hits = new[] { hit };
+                hitCount = 1;
+            }
+            else
+            {
+                hits = System.Array.Empty<RaycastHit>();
+            }
+        }
+        else
+        {
+            hits = Physics.SphereCastAll(from, radius, dir, range, hitMask, QueryTriggerInteraction.Ignore)
+                   .OrderBy(h => h.distance).ToArray();
+            hitCount = hits.Length;
         }
 
+        if (hitCount > 0)
+        {
+            int remaining = (pierceCount <= 0) ? 1 : (pierceCount + 1);
+            for (int i = 0; i < hitCount && remaining > 0; i++, remaining--)
+            {
+                var info = new DamageInfo
+                {
+                    amount = shooter.definition ? shooter.definition.baseDamage : 10f,
+                    type = shooter.definition ? shooter.definition.damageType : DamageType.Physical,
+                    critMult = shooter.RollCrit(), // 1f or >1f
+                    source = shooter.gameObject,
+                    hitPoint = hits[i].point
+                };
+                Combat.ApplyHit(hits[i].collider, info);
+            }
+        }
+
+        // Visual
         if (drawLine)
         {
             var go = new GameObject("HitscanLine");
@@ -54,7 +71,19 @@ public class FireHitScanSO : FireBehaviourSO
             lr.positionCount = 2;
             lr.SetPositions(new[] { from, from + dir * range });
             lr.startWidth = lr.endWidth = lineWidth;
-            lr.material = lineMaterial ? lineMaterial : new Material(Shader.Find("Sprites/Default"));
+
+            // Use assigned material or a cached default (no per-shot new Material/Shader.Find)
+            if (lineMaterial)
+            {
+                lr.sharedMaterial = lineMaterial;
+            }
+            else
+            {
+                if (_defaultLineMat == null)
+                    _defaultLineMat = new Material(Shader.Find("Sprites/Default")) { hideFlags = HideFlags.HideAndDontSave };
+                lr.sharedMaterial = _defaultLineMat;
+            }
+
             lr.textureMode = LineTextureMode.Stretch;
             Object.Destroy(go, lineDuration);
         }

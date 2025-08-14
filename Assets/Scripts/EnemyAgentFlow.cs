@@ -4,7 +4,6 @@ using UnityEngine;
 [RequireComponent(typeof(Health))]
 [RequireComponent(typeof(VelocityTracker))]
 public class EnemyAgentFlow : MonoBehaviour, IPoolable
-
 {
     [Header("Movement")]
     public float moveSpeed = 2.2f;
@@ -41,47 +40,54 @@ public class EnemyAgentFlow : MonoBehaviour, IPoolable
     Collider[] _buf = new Collider[64]; // larger buffer for crowds
 
     Rigidbody _rb;
+    StatsComponent _stats; // <- NEW: read move speed via StatBlock when available
 
     void Awake()
     {
         _rb = GetComponent<Rigidbody>();
         if (_rb) { _rb.isKinematic = true; _rb.useGravity = false; } // we move by transform
-    }
-public void OnSpawned()  // IPoolable
-{
-    // Ensure the enemy starts fresh when reused from the pool.
-    var h = GetComponent<Health>();
-    if (h)
-    {
-        h.currentHP = Mathf.Max(1f, h.maxHP);
+
+        _stats = GetComponent<StatsComponent>(); // optional; falls back if missing
     }
 
-    // If you drive stats from an EnemyDefinitionSO via EnemySetup, reapply here too.
-    var setup = GetComponent<EnemySetup>();
-    if (setup && setup.definition)
+    // ---- IPoolable (called by EnemyPool) ----
+    public void OnSpawned()
     {
-        // Health
-        var d = setup.definition;
+        // Ensure the enemy starts fresh when reused from the pool.
+        var h = GetComponent<Health>();
         if (h)
         {
-            h.maxHP = Mathf.Max(1f, d.maxHP);
-            h.currentHP = h.maxHP;
-            h.resistances = d.resistances;
+            h.currentHP = Mathf.Max(1f, h.maxHP);
         }
 
-        // Move speed
-        // EnemySetup already writes in Awake on first spawn.  We mirror it for pooled spawns.
-        var mover = this; // EnemyAgentFlow
-        mover.moveSpeed = d.moveSpeed * Mathf.Max(0.01f, setup.moveSpeedMultiplier);
+        // If you drive stats from an EnemyDefinitionSO via EnemySetup, reapply here too.
+        var setup = GetComponent<EnemySetup>();
+        if (setup && setup.definition)
+        {
+            var d = setup.definition;
+            if (h)
+            {
+                h.maxHP = Mathf.Max(1f, d.maxHP);
+                h.currentHP = h.maxHP;
+                h.resistances = d.resistances;
+            }
+
+            // Base move speed from definition (respect any multiplier on setup)
+            moveSpeed = d.moveSpeed * Mathf.Max(0.01f, setup.moveSpeedMultiplier);
+        }
+
+        // Seed StatBlock base so status effects (slows, etc.) apply on top of this.
+        if (_stats)
+            _stats.Block.SetBase(StatIDs.MoveSpeed, moveSpeed);
+
+        enabled = true;
     }
 
-    enabled = true;
-}
+    public void OnRecycled()
+    {
+        enabled = false;
+    }
 
-public void OnRecycled()  // IPoolable
-{
-    enabled = false;
-}
     void Update()
     {
         var grid = GridService.Instance;
@@ -174,7 +180,10 @@ public void OnRecycled()  // IPoolable
         Vector3 steer = desiredDir + push;
         if (steer.sqrMagnitude > 0.0001f) steer.Normalize();
 
-        Vector3 delta = steer * (moveSpeed * speedMul) * Time.deltaTime;
+        // ---- NEW: get base speed from Stats (fallback to moveSpeed)
+        float baseSpeed = _stats ? _stats.GetFinal(StatIDs.MoveSpeed, moveSpeed) : moveSpeed;
+
+        Vector3 delta = steer * (baseSpeed * speedMul) * Time.deltaTime;
 
         // move with grid collision
         Vector3 newPos = MoveWithGridCollision(transform.position, delta, grid);

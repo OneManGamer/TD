@@ -1,13 +1,16 @@
-// File: FireStraightSO.cs
+using System.Collections.Generic;
 using UnityEngine;
 
 [CreateAssetMenu(menuName = "TD/Fire/Projectile Straight")]
 public class FireStraightSO : FireBehaviourSO
 {
     [Header("Projectile")]
-    public ArrowProjectile projectilePrefab;   // was GameObject
+    public ArrowProjectile projectilePrefab;
     public float speed = 24f;
-    public bool stickOnHit = true;             // toggle in Inspector
+    public bool stickOnHit = true;
+
+    [Header("On-Hit Effects")]
+    public List<OnHitEffectSO> onHitEffects;
 
     public override void FireTick(TowerShooter shooter, Transform target)
     {
@@ -18,25 +21,22 @@ public class FireStraightSO : FireBehaviourSO
 
         ApplyMissCone(shooter, origin, ref aimPoint);
 
-        // Spawn via ProjectilePool (fallback to Instantiate if pool is missing)
+        // Spawn via pool (fallback to Instantiate)
         ArrowProjectile proj = ProjectilePool.Instance
             ? ProjectilePool.Instance.Spawn(projectilePrefab, origin, Quaternion.identity)
             : Object.Instantiate(projectilePrefab, origin, Quaternion.identity);
 
-        if (!proj)
-        {
-            Debug.LogError("FireStraightSO: projectile prefab must have ArrowProjectile.");
-            return;
-        }
+        if (!proj) { Debug.LogError("FireStraightSO: projectile prefab must have ArrowProjectile."); return; }
 
-        // Configure projectile
         proj.stickOnHit = stickOnHit;
 
         float dmg = shooter.definition ? shooter.definition.baseDamage : 10f;
         DamageType type = shooter.definition ? shooter.definition.damageType : DamageType.Physical;
         proj.SetDamage(dmg, type);
 
-        // Launch
+        // Pass data-driven effects
+        proj.SetOnHitEffects(onHitEffects);
+
         proj.LaunchToward(origin, aimPoint, speed);
 
         if (shooter.sfxShot) shooter.sfxShot.Play();

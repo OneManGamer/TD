@@ -1,11 +1,11 @@
-// File: FireShotgunSO.cs
+using System.Collections.Generic;
 using UnityEngine;
 
 [CreateAssetMenu(menuName = "TD/Fire/Shotgun")]
 public class FireShotgunSO : FireBehaviourSO
 {
     [Header("Projectile")]
-    public ArrowProjectile projectilePrefab;   // was GameObject
+    public ArrowProjectile projectilePrefab;
     public int pellets = 6;
     public float speed = 22f;
     public bool stickOnHit = false;
@@ -19,6 +19,9 @@ public class FireShotgunSO : FireBehaviourSO
     [Header("Damage")]
     [Tooltip("Damage multiplier per pellet relative to tower baseDamage.")]
     public float pelletDamageMultiplier = 0.35f;
+
+    [Header("On-Hit Effects")]
+    public List<OnHitEffectSO> onHitEffects;
 
     public override void FireTick(TowerShooter shooter, Transform target)
     {
@@ -64,10 +67,13 @@ public class FireShotgunSO : FireBehaviourSO
 
             // Per-pellet damage (includes crit if your shooter supports it)
             float baseDmg = shooter.definition ? shooter.definition.baseDamage : 10f;
-            float crit = shooter.RollCrit(); // e.g., 1f for no-crit or 2f for crit
+            float crit = shooter.RollCrit(); // e.g., 1f for no-crit or >1f for crit
             float pelletDmg = baseDmg * pelletDamageMultiplier * Mathf.Max(1f, crit);
             DamageType type = shooter.definition ? shooter.definition.damageType : DamageType.Physical;
             proj.SetDamage(pelletDmg, type);
+
+            // Data-driven effects
+            proj.SetOnHitEffects(onHitEffects);
 
             // LaunchToward with aimpoint computed from our spread direction
             proj.LaunchToward(origin, origin + dir, speed);

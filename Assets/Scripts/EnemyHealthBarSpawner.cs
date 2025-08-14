@@ -1,85 +1,155 @@
 // File: EnemyHealthBarSpawner.cs
 using UnityEngine;
-using UnityEngine.UI; // only used for Image auto-wiring
 
-[DisallowMultipleComponent]
-public class EnemyHealthBarSpawner : MonoBehaviour
+[RequireComponent(typeof(Health))]
+public class EnemyHealthBarSpawner : MonoBehaviour, IPoolable
 {
-    [Header("Prefab & Canvas")]
-    public GameObject healthBarPrefab;  // assign pf_HealthBarUI (no Canvas on it)
-    public Canvas overlayCanvas;        // assign UI_Root (Screen Space - Overlay)
-    public Vector3 offset = new Vector3(0f, 2f, 0f);
+    [Header("References")]
+    [Tooltip("UI bar prefab with HealthBarUIOverlay component (must be on the prefab ROOT).")]
+    [SerializeField] private HealthBarUIOverlay overlayPrefab;
 
-    void Start()
+    [Tooltip("Screen Space - Overlay canvas that will host the bars (leave blank on prefab; auto-find at runtime).")]
+    [SerializeField] private Canvas overlayCanvas;
+
+    [Tooltip("Camera used to convert world -> screen points. Optional for Screen Space - Overlay (leave blank on prefab).")]
+    [SerializeField] private Camera worldCamera;
+
+    [Header("Placement")]
+    [SerializeField] private Vector3 worldOffset = new Vector3(0f, 2f, 0f);
+
+    [Header("Lifecycle")]
+    [SerializeField] private bool spawnOnEnable = true;
+
+    [Header("Optional Fallbacks (used only if fields are left empty)")]
+    [SerializeField] private bool autoFindCanvasIfMissing = true;
+    [SerializeField] private bool autoFindCameraIfMissing = true;
+
+    private Health _health;
+    private HealthBarUIOverlay _instance;
+    private bool _subscribed;
+
+    void Awake()
     {
-        if (!healthBarPrefab)
+        _health = GetComponent<Health>();
+    }
+
+    void OnEnable()
+    {
+        TrySubscribe();
+        if (spawnOnEnable) EnsureBar();
+    }
+
+    void OnDisable()
+    {
+        Unsubscribe();
+    }
+
+    void OnDestroy()
+    {
+        Unsubscribe();
+        DestroyBar();
+    }
+
+    public void EnsureBar()
+    {
+        // If we already have one or we don't have a prefab assigned, just bail.
+        if (_instance || !overlayPrefab) return;
+
+        // One-time fallbacks (prefab can’t hold scene refs; we find them at runtime)
+        if (!overlayCanvas && autoFindCanvasIfMissing)
         {
-            Debug.LogWarning($"{name}: No healthBarPrefab assigned.");
-            return;
+            overlayCanvas = FindCanvasOnce();
         }
 
-        // Try to find the overlay canvas if not wired
         if (!overlayCanvas)
         {
-            var tagged = GameObject.FindWithTag("MainUI");
-            overlayCanvas = tagged ? tagged.GetComponent<Canvas>() : null;
-
-            if (!overlayCanvas)
-            {
-                // Unity 2023/6: prefer new APIs; fall back for older Unity
-                #if UNITY_2023_1_OR_NEWER || UNITY_6000_0_OR_NEWER
-                overlayCanvas = Object.FindFirstObjectByType<Canvas>();
-                if (!overlayCanvas) overlayCanvas = Object.FindAnyObjectByType<Canvas>();
-                #else
-                overlayCanvas = Object.FindObjectOfType<Canvas>();
-                #endif
-            }
-        }
-
-        if (!overlayCanvas)
-        {
-            Debug.LogWarning($"{name}: No overlay Canvas found.");
+            Debug.LogWarning($"{name}: No overlay Canvas found/assigned; cannot spawn health bar.");
             return;
         }
 
-        var h = GetComponent<Health>();
-        if (!h)
+        if (!worldCamera && autoFindCameraIfMissing)
         {
-            Debug.LogWarning($"{name}: No Health component; cannot spawn health bar.");
-            return;
+            worldCamera = Camera.main; // ok to be null for Screen Space - Overlay
         }
 
-        var go = Instantiate(healthBarPrefab, overlayCanvas.transform);
+        // Choose camera depending on canvas mode
+        var camToUse = (overlayCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
+            ? null
+            : (overlayCanvas.worldCamera ? overlayCanvas.worldCamera : worldCamera);
 
-        // Ensure the behaviour exists
-        var hb = go.GetComponent<HealthBarUIOverlay>();
-        if (!hb) hb = go.AddComponent<HealthBarUIOverlay>();
+        // Instantiate under the canvas and wire references
+        _instance = Instantiate(overlayPrefab, overlayCanvas.transform, false);
+        _instance.name = $"HealthBarUIOverlay_{gameObject.name}";
+        _instance.canvas = overlayCanvas;
+        _instance.cam    = camToUse;
+        _instance.health = _health;
+        _instance.target = transform;
+        _instance.worldOffset = worldOffset;
+    }
 
-        // Wire required refs
-        hb.canvas = overlayCanvas;
-        hb.cam = Camera.main;
-        hb.health = h;
-        hb.target = transform;
-        hb.worldOffset = offset;
-
-        // Auto-wire BG/Fill by name if not set on the prefab
-        if (!hb.fill)
+    public void DestroyBar()
+    {
+        if (_instance)
         {
-            var imgs = go.GetComponentsInChildren<Image>(true);
-            foreach (var img in imgs)
-            {
-                if (img.name.Equals("Fill", System.StringComparison.OrdinalIgnoreCase))
-                { hb.fill = img; break; }
-            }
-        }
-        if (!hb.bg)
-        {
-            var imgs = go.GetComponentsInChildren<Image>(true);
-            foreach (var img in imgs)
-            {
-                if (img.name.Equals("BG", System.StringComparison.OrdinalIgnoreCase))
-                { hb.bg = img; break; }
-            }
+            Destroy(_instance.gameObject);
+            _instance = null;
         }
     }
+
+    // ---- IPoolable ----
+    public void OnSpawned()
+    {
+        EnsureBar();
+        if (_instance)
+        {
+            _instance.health = _health;
+            _instance.target = transform;
+            _instance.canvas = overlayCanvas ? overlayCanvas : _instance.canvas;
+            // keep current cam unless we have an explicit one to set
+            if (worldCamera) _instance.cam = worldCamera;
+            _instance.worldOffset = worldOffset;
+        }
+    }
+
+    public void OnRecycled()
+    {
+        DestroyBar();
+    }
+
+    // ---- Health wiring ----
+    void TrySubscribe()
+    {
+        if (_subscribed || _health == null) return;
+        _health.OnDeath += HandleDeath;
+        _subscribed = true;
+    }
+
+    void Unsubscribe()
+    {
+        if (_subscribed && _health != null)
+            _health.OnDeath -= HandleDeath;
+        _subscribed = false;
+    }
+
+    void HandleDeath()
+    {
+        DestroyBar();
+    }
+
+    // ---- Cross-version Canvas finder ----
+    private static Canvas FindCanvasOnce()
+    {
+#if UNITY_2023_1_OR_NEWER
+        return FindFirstObjectByType<Canvas>(FindObjectsInactive.Exclude);
+#else
+        return FindObjectOfType<Canvas>();
+#endif
+    }
+
+#if UNITY_EDITOR
+    void OnValidate()
+    {
+        if (!_health) _health = GetComponent<Health>();
+    }
+#endif
 }

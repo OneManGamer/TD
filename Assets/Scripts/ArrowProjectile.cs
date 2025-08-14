@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class ArrowProjectile : MonoBehaviour, IPoolable
@@ -36,8 +37,6 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
     [Tooltip("Make unique material instances on stick to avoid any shared-material tint weirdness.")]
     public bool instantiateMaterialsOnStick = true;
 
-    [HideInInspector] public GameObject sourcePrefab; // legacy; no longer used with ProjectilePool
-
     // runtime
     Vector3 _vel;
     float _life;
@@ -62,8 +61,20 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
     Transform[] _allTransforms;
     int[] _origLayers;
 
+    // on-hit effects (data-driven)
+    List<OnHitEffectSO> _onHitEffects;
+
     // ------------ public API ------------
     public void SetDamage(float amt, DamageType type) { baseDamage = amt; damageType = type; }
+
+    public void SetOnHitEffects(IList<OnHitEffectSO> effects)
+    {
+        if (effects == null || effects.Count == 0) { _onHitEffects = null; return; }
+        _onHitEffects ??= new List<OnHitEffectSO>(effects.Count);
+        _onHitEffects.Clear();
+        for (int i = 0; i < effects.Count; i++)
+            if (effects[i]) _onHitEffects.Add(effects[i]);
+    }
 
     // ------------ Unity ------------
     void Awake()
@@ -78,7 +89,7 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
         _allTransforms = GetComponentsInChildren<Transform>(true);
         _origLayers = new int[_allTransforms.Length];
         for (int i = 0; i < _allTransforms.Length; i++)
-            _origLayers[i] = _allTransforms[i].gameObject.layer;
+            _allTransforms[i].gameObject.layer = (_origLayers[i] = _allTransforms[i].gameObject.layer);
     }
 
     // IPoolable — called by ProjectilePool BEFORE SetActive(true)
@@ -99,13 +110,16 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
         var tr = GetComponent<TrailRenderer>();
         if (tr) tr.Clear();
 
-        // Reset transient state (also done in Launch* for safety)
+        // Reset transient state
         _stuckEnemy = false;
         _stuckWorld = false;
         _worldStickTimer = 0f;
         _carrier = null;
         if (_carrierHealth != null) _carrierHealth.OnDeath -= HandleCarrierDeath;
         _carrierHealth = null;
+
+        // Effects set externally by Fire SO after spawn; we clear here.
+        _onHitEffects = null;
 
         // Ensure intended prefab scale
         if (_scaleCached) transform.localScale = _prefabLocalScale;
@@ -115,20 +129,17 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
 
     public void OnRecycled()
     {
-        // Unsubscribe and disable behaviour while pooled
         if (_carrierHealth != null) _carrierHealth.OnDeath -= HandleCarrierDeath;
         _stuckEnemy = false;
         _stuckWorld = false;
         _carrier = null;
         _carrierHealth = null;
+        _onHitEffects = null;
         enabled = false;
     }
 
     public void LaunchToward(Vector3 origin, Vector3 aimPoint, float launchSpeed)
     {
-        // Safety: make sure a direct Instantiate path also resets correctly.
-        OnSpawned();
-
         if (_scaleCached) transform.localScale = _prefabLocalScale; // preserve prefab size
 
         transform.position = origin;
@@ -142,9 +153,6 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
 
     public bool TryLaunchBallistic(Vector3 origin, Vector3 target, float launchSpeed, float g, bool highArc)
     {
-        // Safety: make sure a direct Instantiate path also resets correctly.
-        OnSpawned();
-
         if (_scaleCached) transform.localScale = _prefabLocalScale;
 
         transform.position = origin;
@@ -225,12 +233,12 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
 
     void OnDisable()
     {
-        // Safety if disabled outside the pool path.
         if (_carrierHealth != null) _carrierHealth.OnDeath -= HandleCarrierDeath;
         _stuckEnemy = false;
         _stuckWorld = false;
         _carrier = null;
         _carrierHealth = null;
+        _onHitEffects = null;
     }
 
     void OnDestroy()
@@ -249,6 +257,18 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
             hitPoint = hit.point
         };
         Combat.ApplyHit(hit.collider, info);
+
+        // Run extra data-driven on-hit effects
+        if (_onHitEffects != null)
+        {
+            for (int i = 0; i < _onHitEffects.Count; i++)
+            {
+                var fx = _onHitEffects[i];
+                if (!fx) continue;
+                if (fx.chance >= 1f || Random.value <= fx.chance)
+                    fx.Apply(hit.collider, info);
+            }
+        }
 
         if (!stickOnHit) { Despawn(); return; }
 
