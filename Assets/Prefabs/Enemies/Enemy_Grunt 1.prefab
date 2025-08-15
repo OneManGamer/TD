@@ -19,6 +19,8 @@ GameObject:
   - component: {fileID: 2921141517360721804}
   - component: {fileID: 1776933178133659481}
   - component: {fileID: 4638131302168563957}
+  - component: {fileID: 7954790893222404717}
+  - component: {fileID: -7959802586093979477}
   m_Layer: 6
   m_Name: Enemy_Grunt 1
   m_TagString: Enemy
@@ -175,9 +177,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6ad818861f572364bb82b77649ba4b9f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  healthBarPrefab: {fileID: 7142067131424340933, guid: c7fd36613ea0d614190d560491151d70, type: 3}
+  overlayPrefab: {fileID: 3836858352056692791, guid: fbb42df96d05d3441821b6d92eae0346, type: 3}
   overlayCanvas: {fileID: 0}
-  offset: {x: 0, y: 2, z: 0}
+  worldCamera: {fileID: 0}
+  worldOffset: {x: 0, y: 2, z: 0}
+  spawnOnEnable: 1
+  autoFindCanvasIfMissing: 1
+  autoFindCameraIfMissing: 1
 --- !u!114 &-4157272597539492049
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -227,5 +233,31 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bb41f7bbb3f2fda4389e6d373e2b9041, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &7954790893222404717
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4589600794841658612}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5444bdf3b1218d34ebc2da34ce65a62c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  baseMoveSpeed: 2.2
+  baseDamageTaken: 1
+--- !u!114 &-7959802586093979477
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4589600794841658612}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 406bccdb80112354f845d8570116f937, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 

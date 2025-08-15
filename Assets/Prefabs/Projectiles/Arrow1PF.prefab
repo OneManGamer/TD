@@ -14,7 +14,7 @@ GameObject:
   - component: {fileID: 3856641697817260516}
   - component: {fileID: 4257404705940903222}
   m_Layer: 8
-  m_Name: pf_Arrow
+  m_Name: Arrow1PF
   m_TagString: Projectile
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

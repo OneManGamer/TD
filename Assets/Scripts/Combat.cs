@@ -1,6 +1,7 @@
 // File: Combat.cs
 using System.Reflection;
 using UnityEngine;
+using TD.Combat;
 
 /// <summary>
 /// Central damage entry point used by projectiles and hitscan.

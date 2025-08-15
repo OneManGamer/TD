@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using TD.Combat;
 
 [CreateAssetMenu(menuName = "TD/Fire/Shotgun")]
 public class FireShotgunSO : FireBehaviourSO

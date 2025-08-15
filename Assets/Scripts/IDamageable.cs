@@ -1,5 +1,10 @@
-// File: IDamageable.cs
-public interface IDamageable
+namespace TD.Combat
 {
-    void ApplyDamage(in DamageInfo info);
+  /// <summary>
+  /// Implement on targets that can take damage.
+  /// </summary>
+  public interface IDamageable
+  {
+    void ApplyDamage(float amount, HitContext ctx);
+  }
 }

@@ -1,4 +1,5 @@
 using UnityEngine;
+using TD.Combat;
 
 [CreateAssetMenu(menuName = "TD/Effects/OnHit/DoT")]
 public class OnHitDoTSO : OnHitEffectSO

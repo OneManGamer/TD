@@ -1,6 +1,6 @@
 using System.Collections;
 using UnityEngine;
-
+using TD.Combat;
 /// <summary>
 /// Lives on the enemy while DoT is active and applies ticks via Combat.ApplyHit.
 /// Multiple DoTs can coexist; each call starts its own routine.

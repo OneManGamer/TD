@@ -1,6 +1,7 @@
 // File: FireHitScanSO.cs
 using UnityEngine;
 using System.Linq;
+using TD.Combat;
 
 [CreateAssetMenu(menuName = "TD/Fire/Hitscan")]
 public class FireHitScanSO : FireBehaviourSO

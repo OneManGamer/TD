@@ -1,5 +1,6 @@
 // File: TowerDefinitionSO.cs
 using UnityEngine;
+using TD.Combat;
 
 [CreateAssetMenu(fileName = "TowerDefinition", menuName = "TD/Data/Tower Definition")]
 public class TowerDefinitionSO : ScriptableObject

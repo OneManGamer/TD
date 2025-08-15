@@ -9,9 +9,11 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3cc7cb84fa91d6a4d8443baae225338c, type: 3}
-  m_Name: Arrow 1
+  m_Script: {fileID: 11500000, guid: 80e375741cd66f24683d7b4615a04fd3, type: 3}
+  m_Name: AgitatedPoison
   m_EditorClassIdentifier: 
-  projectilePrefab: {fileID: 5401277512320582260, guid: e7f194b89ac1e494aa2e5f0f5a04cef2, type: 3}
-  speed: 18
-  stickOnHit: 1
+  TagId: AgitatedPoison
+  DefaultDuration: 3
+  Stackable: 0
+  MaxStacks: 1
+  ExclusiveGroup: 

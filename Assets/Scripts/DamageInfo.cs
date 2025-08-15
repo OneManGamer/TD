@@ -1,5 +1,6 @@
 // File: DamageInfo.cs
 using UnityEngine;
+using TD.Combat;
 
 public struct DamageInfo
 {

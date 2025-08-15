@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b34a113c3eadc3244993c3b987df206b, type: 3}
+  m_Name: Wet_Cold
+  m_EditorClassIdentifier: 
+  primerTag: {fileID: 11400000, guid: 5ec5895de2f79e945b620a40114691cd, type: 2}
+  detonator: 6
+  damageMultiplier: 1
+  flatBonusDamage: 0
+  consumePrimerOnDetonate: 1
+  addExtraChain: 0
+  extraChainAmount: 0
