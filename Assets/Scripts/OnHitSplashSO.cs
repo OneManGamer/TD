@@ -1,4 +1,5 @@
 using UnityEngine;
+using TD.Combat;
 
 [CreateAssetMenu(menuName = "TD/Effects/OnHit/Splash")]
 public class OnHitSplashSO : OnHitEffectSO
@@ -14,25 +15,27 @@ public class OnHitSplashSO : OnHitEffectSO
 
     public override void Apply(Collider hitCollider, in DamageInfo context)
     {
-        if (!hitCollider) return;
-        var center = context.hitPoint; // set by projectile
-        int n = Physics.OverlapSphereNonAlloc(center, Mathf.Max(0.01f, radius), _buf, hitMask, QueryTriggerInteraction.Ignore);
-
-        for (int i = 0; i < n; i++)
+        var center = context.hitPoint;
+        int count = Physics.OverlapSphereNonAlloc(center, radius, _buf, hitMask, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < count; i++)
         {
             var col = _buf[i];
             if (!col) continue;
             if (!includeOriginalTarget && col == hitCollider) continue;
 
-            var info = new DamageInfo
-            {
-                amount = Mathf.Max(0f, context.amount * damageFraction),
-                type = context.type,
-                critMult = 1f,
-                source = context.source,
-                hitPoint = col.ClosestPoint(center)
-            };
-            Combat.ApplyHit(col, info);
+            var amount = Mathf.Max(0f, context.amount * damageFraction);
+            var hp = col.GetComponentInParent<IDamageable>();
+            if (hp == null) continue;
+
+            var closest = col.ClosestPoint(center);
+            CombatIntegrationAPI.ApplyHit(
+                context.source,
+                col,
+                amount,
+                context.type,
+                closest,
+                Vector3.up
+            );
         }
     }
 }

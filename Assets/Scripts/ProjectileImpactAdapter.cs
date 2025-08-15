@@ -12,24 +12,29 @@ namespace TD.Combat
     [SerializeField] private DamageType damageType = DamageType.Physical;
     [SerializeField] private float baseDamage = 10f;
 
-    [Header("Primers (status tags to apply before damage)")]
-    [SerializeField] private StatusTagSO[] primers;
+    [Header("Primers (optional)")]
+    [SerializeField] private StatusTagSO[] primers; // not used by the core API, but passed through UserData if your on-hit effects read it
 
-    [Header("Hit Detection Options")]
-    [SerializeField] private bool useTriggerEnter = true;       // If your projectile uses a trigger collider
-    [SerializeField] private bool useCollisionEnter = false;    // If your projectile uses non-trigger collision
+    [Header("Auto trigger/collision")]
+    [SerializeField] private bool useTriggerEnter = true;
+    [SerializeField] private bool useCollisionEnter = false;
     [SerializeField] private bool destroyOnHit = true;
+
+    [Header("Attacker")]
     [SerializeField] private GameObject attackerOverride;       // Optional.  If null, uses this.gameObject as the attacker
 
     /// <summary>
     /// Call this from your own hit logic if you do raycasts or custom detection.
+    /// Returns true if damage was applied to a valid IDamageable.
     /// </summary>
-    public DamageReport ApplyToTarget(GameObject target)
+    public bool ApplyToTarget(GameObject target)
     {
-      if (target == null) return new DamageReport(0f, null, 0);
-
+      if (target == null) return false;
       var attacker = attackerOverride != null ? attackerOverride : gameObject;
-      return CombatIntegrationAPI.ApplyHit(attacker, target, baseDamage, damageType, primers);
+
+      // We pass primers via HitContext.UserData for any systems that care.
+      var ctx = new HitContext(attacker, target, damageType, target.transform.position, Vector3.up, false, 1f, primers);
+      return CombatIntegrationAPI.ApplyHit(attacker, target, baseDamage, damageType, in ctx);
     }
 
     private void OnTriggerEnter(Collider other)
@@ -41,8 +46,7 @@ namespace TD.Combat
     private void OnCollisionEnter(Collision collision)
     {
       if (!useCollisionEnter) return;
-      var hitGO = collision.rigidbody ? collision.rigidbody.gameObject : collision.gameObject;
-      TryApply(hitGO);
+      TryApply(collision.rigidbody ? collision.rigidbody.gameObject : collision.gameObject);
     }
 
     private void TryApply(GameObject hit)
@@ -50,7 +54,7 @@ namespace TD.Combat
       if (hit == null) return;
 
       // Only process if the target can actually be damaged
-      var damageable = hit.GetComponent<IDamageable>();
+      var damageable = hit.GetComponentInParent<IDamageable>();
       if (damageable == null) return;
 
       ApplyToTarget(hit);

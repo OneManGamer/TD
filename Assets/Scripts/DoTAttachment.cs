@@ -1,8 +1,9 @@
 using System.Collections;
 using UnityEngine;
 using TD.Combat;
+
 /// <summary>
-/// Lives on the enemy while DoT is active and applies ticks via Combat.ApplyHit.
+/// Lives on the enemy while DoT is active and applies ticks via the unified API.
 /// Multiple DoTs can coexist; each call starts its own routine.
 /// </summary>
 public class DoTAttachment : MonoBehaviour
@@ -16,21 +17,21 @@ public class DoTAttachment : MonoBehaviour
     IEnumerator Run(float tickDamage, int ticks, float interval, DamageType type, GameObject source)
     {
         var col = GetComponent<Collider>();
-        if (!col) col = GetComponentInChildren<Collider>();
+        if (!col) yield break;
+
         for (int i = 0; i < ticks; i++)
         {
-            if (!this || !gameObject.activeInHierarchy) yield break;
+            if (!this) yield break;
             if (col)
             {
-                var info = new DamageInfo
-                {
-                    amount = tickDamage,
-                    type = type,
-                    critMult = 1f,
-                    source = source,
-                    hitPoint = transform.position
-                };
-                Combat.ApplyHit(col, info);
+                CombatIntegrationAPI.ApplyHit(
+                    source,
+                    col,
+                    tickDamage,
+                    type,
+                    transform.position,
+                    Vector3.up
+                );
             }
             yield return new WaitForSeconds(Mathf.Max(0.01f, interval));
         }

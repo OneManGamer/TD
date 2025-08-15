@@ -17,45 +17,41 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
     [SerializeField] DamageType damageType = DamageType.Physical;
 
     [Header("Hit / Stick")]
-    [Tooltip("Layers this projectile can hit. Exclude Projectile / Ignore Raycast (and StuckProjectile if you use it).")]
+    [Tooltip("Layers this projectile can hit.  Exclude Projectile / Ignore Raycast.")]
     public LayerMask hitMask = ~0;
     public bool stickOnHit = true;
     [Tooltip("How far the arrow sinks into the surface (meters).")]
     public float stickDepth = 0.06f;
-    [Tooltip("Small random cone so arrows don't overlap perfectly.")]
+    [Tooltip("Small random cone so arrows do not overlap perfectly.")]
     public float embedJitterDegrees = 4f;
-    [Tooltip("Move to safe layer + disable colliders after sticking so future shots won't hit it.")]
+    [Tooltip("Move to safe layer and disable colliders after sticking so future shots will not hit it.")]
     public bool ignoreAfterStick = true;
 
     [Header("Stick to World (ground/walls)")]
-    [Tooltip("If off, arrows that hit non-enemies will not stick (they despawn).")]
+    [Tooltip("If off, arrows that hit non-enemies will not stick and will despawn instead.")]
     public bool allowStickToWorld = true;
     [Tooltip("If sticking to world, despawn after this many seconds.")]
     public float worldStickLifetime = 3.0f;
 
     [Header("Visual")]
     public bool orientToVelocity = true;
-    [Tooltip("Make unique material instances on stick to avoid any shared-material tint weirdness.")]
+    [Tooltip("Make unique material instances on stick to avoid any shared-material tint issues.")]
     public bool instantiateMaterialsOnStick = true;
 
     // runtime
     Vector3 _vel;
     float _life;
-
-    // follow enemy (no parenting → no scale inheritance)
     bool _stuckEnemy;
-    Transform _carrier;
-    Health _carrierHealth;
-    Vector3 _localOffset;     // relative to carrier (rotation space)
-    Quaternion _localRot;
-
-    // stick to world
     bool _stuckWorld;
     float _worldStickTimer;
 
-    // scale handling
-    Vector3 _prefabLocalScale;
-    bool _scaleCached;
+    Transform _carrier;
+    Health _carrierHealth;
+    Vector3 _localOffset;
+    Quaternion _localRot;
+
+    static bool _scaleCached;
+    static Vector3 _prefabLocalScale;
 
     // layers & colliders reset
     int _stuckLayer = -1;
@@ -77,7 +73,7 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
             if (effects[i]) _onHitEffects.Add(effects[i]);
     }
 
-    // ------------ Unity ------------
+    // ------------ Unity and Pool ------------
     void Awake()
     {
         if (!_scaleCached)
@@ -86,53 +82,43 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
             _scaleCached = true;
         }
 
-        // cache transform hierarchy original layers so we can restore after being set to StuckProjectile
         _allTransforms = GetComponentsInChildren<Transform>(true);
         _origLayers = new int[_allTransforms.Length];
-        for (int i = 0; i < _allTransforms.Length; i++)
-            _allTransforms[i].gameObject.layer = (_origLayers[i] = _allTransforms[i].gameObject.layer);
+        for (int i = 0; i < _allTransforms.Length; i++) _origLayers[i] = _allTransforms[i].gameObject.layer;
+        _stuckLayer = LayerMask.NameToLayer("Ignore Raycast");
     }
 
-    // IPoolable — called by ProjectilePool BEFORE SetActive(true)
-    public void OnSpawned()
+    void OnEnable()
     {
-        // Restore original layers if we had changed them while stuck.
-        if (_allTransforms != null && _origLayers != null && _allTransforms.Length == _origLayers.Length)
-        {
-            for (int i = 0; i < _allTransforms.Length; i++)
-                _allTransforms[i].gameObject.layer = _origLayers[i];
-        }
-        _stuckLayer = -1;
-
-        // Re-enable all colliders we might have disabled on stick.
-        EnableAllColliders(gameObject);
-
-        // Clear visuals like trails so reused arrows don't smear.
-        var tr = GetComponent<TrailRenderer>();
-        if (tr) tr.Clear();
-
-        // Reset transient state
-        _stuckEnemy = false;
-        _stuckWorld = false;
-        _worldStickTimer = 0f;
+        _life = 0f;
+        _stuckEnemy = _stuckWorld = false;
         _carrier = null;
-        if (_carrierHealth != null) _carrierHealth.OnDeath -= HandleCarrierDeath;
         _carrierHealth = null;
-
-        // Effects set externally by Fire SO after spawn; we clear here.
-        _onHitEffects = null;
-
-        // Ensure intended prefab scale
-        if (_scaleCached) transform.localScale = _prefabLocalScale;
-
+        _worldStickTimer = 0f;
         enabled = true;
     }
 
-    public void OnRecycled()
+    // New for pool contract
+    void IPoolable.OnSpawned()
     {
-        if (_carrierHealth != null) _carrierHealth.OnDeath -= HandleCarrierDeath;
-        _stuckEnemy = false;
-        _stuckWorld = false;
+        // restore layers and colliders just in case this came back from a stick state
+        RestoreOriginalLayers();
+        EnableAllColliders(gameObject);
+
+        _life = 0f;
+        _stuckEnemy = _stuckWorld = false;
+        _carrier = null;
+        _carrierHealth = null;
+        _worldStickTimer = 0f;
+
+        if (_scaleCached) transform.localScale = _prefabLocalScale;
+        enabled = true;
+    }
+
+    void IPoolable.OnRecycled()
+    {
+        _life = 0f;
+        _stuckEnemy = _stuckWorld = false;
         _carrier = null;
         _carrierHealth = null;
         _onHitEffects = null;
@@ -141,7 +127,7 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
 
     public void LaunchToward(Vector3 origin, Vector3 aimPoint, float launchSpeed)
     {
-        if (_scaleCached) transform.localScale = _prefabLocalScale; // preserve prefab size
+        if (_scaleCached) transform.localScale = _prefabLocalScale;
 
         transform.position = origin;
         Vector3 dir = (aimPoint - origin);
@@ -160,60 +146,64 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
 
         Vector3 to = target - origin;
         Vector3 toXZ = new Vector3(to.x, 0f, to.z);
-        float x = toXZ.magnitude;
+        float dist = toXZ.magnitude;
+        if (dist < 0.001f) return false;
+
+        float speed2 = launchSpeed * launchSpeed;
         float y = to.y;
-        float v2 = launchSpeed * launchSpeed;
-        float gx = g * x;
 
-        float underRoot = v2 * v2 - g * (g * x * x + 2f * y * v2);
-        if (underRoot < 0f) return false;
+        float inside = speed2 * speed2 - g * (g * dist * dist + 2f * y * speed2);
+        if (inside < 0f) return false;
 
-        float root = Mathf.Sqrt(underRoot);
-        float angle = Mathf.Atan((v2 + (highArc ? root : -root)) / gx);
+        float sqrt = Mathf.Sqrt(inside);
+        float angle = highArc ? Mathf.Atan2(speed2 + sqrt, g * dist) : Mathf.Atan2(speed2 - sqrt, g * dist);
 
-        Vector3 dirXZ = (x > 0.0001f) ? toXZ / x : transform.forward;
-        Vector3 vel = dirXZ * (launchSpeed * Mathf.Cos(angle)) + Vector3.up * (launchSpeed * Mathf.Sin(angle));
+        Vector3 dir = toXZ.normalized;
+        Vector3 v = dir * Mathf.Cos(angle) * launchSpeed + Vector3.up * Mathf.Sin(angle) * launchSpeed;
 
-        _vel = vel;
-        gravity = g;
         flightMode = FlightMode.Ballistic;
+        gravity = Mathf.Abs(g);
+        _vel = v;
         _life = 0f;
-
         return true;
     }
 
     void Update()
     {
-        // follow enemy (no parent)
+        float dt = Time.deltaTime;
+        _life += dt;
+        if (_life > maxLifetime)
+        {
+            Despawn();
+            return;
+        }
+
         if (_stuckEnemy)
         {
-            if (!_carrier || !_carrier.gameObject.activeInHierarchy)
+            if (!_carrier)
             {
                 Despawn();
                 return;
             }
-
-            transform.position = _carrier.position + _carrier.rotation * _localOffset;
-            transform.rotation = _carrier.rotation * _localRot;
+            transform.SetPositionAndRotation(_carrier.position + _carrier.rotation * _localOffset, _carrier.rotation * _localRot);
             return;
         }
 
-        // stuck to world with timeout
         if (_stuckWorld)
         {
-            _worldStickTimer += Time.deltaTime;
-            if (_worldStickTimer >= worldStickLifetime) { Despawn(); }
+            _worldStickTimer += dt;
+            if (_worldStickTimer >= worldStickLifetime)
+            {
+                Despawn();
+                return;
+            }
             return;
         }
 
-        // free flight
-        float dt = Time.deltaTime;
-        _life += dt;
-        if (_life >= maxLifetime) { Despawn(); return; }
+        if (flightMode == FlightMode.Ballistic)
+            _vel += Vector3.down * gravity * dt;
 
         Vector3 prev = transform.position;
-        if (flightMode == FlightMode.Ballistic) _vel += Vector3.down * gravity * dt;
-
         Vector3 next = prev + _vel * dt;
         Vector3 dir = next - prev;
         float dist = dir.magnitude;
@@ -242,26 +232,37 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
         _onHitEffects = null;
     }
 
-    void OnDestroy()
+    void Despawn()
     {
-        if (_carrierHealth != null) _carrierHealth.OnDeath -= HandleCarrierDeath;
+        gameObject.SetActive(false);
+    }
+
+    void HandleCarrierDeath()
+    {
+        _stuckEnemy = false;
+        _carrier = null;
+        _carrierHealth = null;
+        Despawn();
     }
 
     void OnHit(RaycastHit hit)
     {
-        var info = new DamageInfo
-        {
-            amount = baseDamage,
-            type = damageType,
-            critMult = 1f,
-            source = gameObject,
-            hitPoint = hit.point
-        };
-        Combat.ApplyHit(hit.collider, info);
+        // Apply unified damage
+        CombatIntegrationAPI.ApplyHit(gameObject, hit.collider, baseDamage, damageType, hit.point, hit.normal);
 
-        // Run extra data-driven on-hit effects
+        // Run extra data-driven on-hit effects if present
         if (_onHitEffects != null)
         {
+            // Note: this DamageInfo is whatever your OnHitEffectSO expects in your project.
+            var info = new DamageInfo
+            {
+                amount = baseDamage,
+                type = damageType,
+                critMult = 1f,
+                source = gameObject,
+                hitPoint = hit.point
+            };
+
             for (int i = 0; i < _onHitEffects.Count; i++)
             {
                 var fx = _onHitEffects[i];
@@ -273,24 +274,18 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
 
         if (!stickOnHit) { Despawn(); return; }
 
-        // final forward (prefer velocity)
-        Vector3 fwd = (_vel.sqrMagnitude > 0.0001f) ? _vel.normalized : -hit.normal;
+        // stick logic
+        Vector3 fwd = _vel.sqrMagnitude > 0.0001f ? _vel.normalized : transform.forward;
 
-        // jitter so many arrows don't overlap perfectly
         if (embedJitterDegrees > 0f)
         {
-            float rad = Mathf.Tan(embedJitterDegrees * Mathf.Deg2Rad);
-            Vector3 right = Vector3.Cross(Vector3.up, fwd);
-            if (right.sqrMagnitude < 1e-6f) right = Vector3.right;
-            right.Normalize();
-            Vector3 up = Vector3.Cross(fwd, right);
-            Vector2 r = Random.insideUnitCircle * rad;
-            fwd = (fwd + right * r.x + up * r.y).normalized;
+            float j = embedJitterDegrees * 0.5f;
+            fwd = Quaternion.Euler(Random.Range(-j, j), Random.Range(-j, j), 0f) * fwd;
         }
 
         Vector3 sinkPos = hit.point - fwd * Mathf.Max(0f, stickDepth);
         transform.SetPositionAndRotation(sinkPos, Quaternion.LookRotation(fwd, Vector3.up));
-        if (_scaleCached) transform.localScale = _prefabLocalScale; // keep prefab size
+        if (_scaleCached) transform.localScale = _prefabLocalScale;
 
         // determine if we hit an enemy (has Health)
         Transform tCarrier = hit.rigidbody ? hit.rigidbody.transform : hit.collider.transform;
@@ -298,7 +293,7 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
 
         if (hp != null)
         {
-            // follow enemy via relative pose (no parenting => no scale stretch)
+            // follow enemy via relative pose
             _carrier = tCarrier;
             _carrierHealth = hp;
             _carrierHealth.OnDeath += HandleCarrierDeath;
@@ -316,49 +311,42 @@ public class ArrowProjectile : MonoBehaviour, IPoolable
             {
                 _stuckWorld = true;
                 _worldStickTimer = 0f;
-                _vel = Vector3.zero;
+
+                if (instantiateMaterialsOnStick)
+                {
+                    var rends = GetComponentsInChildren<Renderer>(true);
+                    foreach (var r in rends)
+                    {
+                        var mats = r.sharedMaterials;
+                        for (int i = 0; i < mats.Length; i++)
+                            mats[i] = Instantiate(mats[i]);
+                        r.sharedMaterials = mats;
+                    }
+                }
+
+                if (ignoreAfterStick)
+                {
+                    SetLayerRecursively(gameObject, _stuckLayer);
+                    var cols = GetComponentsInChildren<Collider>(true);
+                    foreach (var c in cols) c.enabled = false;
+                }
             }
             else
             {
                 Despawn();
-                return;
             }
         }
+    }
 
-        // make stuck arrows non-hittable to avoid stacking
-        if (ignoreAfterStick)
+    void RestoreOriginalLayers()
+    {
+        if (_allTransforms == null || _origLayers == null) return;
+        int len = Mathf.Min(_allTransforms.Length, _origLayers.Length);
+        for (int i = 0; i < len; i++)
         {
-            _stuckLayer = LayerMask.NameToLayer("StuckProjectile");
-            if (_stuckLayer < 0) _stuckLayer = LayerMask.NameToLayer("Ignore Raycast");
-            if (_stuckLayer >= 0) SetLayerRecursively(gameObject, _stuckLayer);
-            DisableAllColliders(gameObject);
+            var t = _allTransforms[i];
+            if (t) t.gameObject.layer = _origLayers[i];
         }
-
-        // avoid shared-material tinting
-        if (instantiateMaterialsOnStick)
-        {
-            var rends = GetComponentsInChildren<Renderer>(true);
-            foreach (var r in rends) { var _ = r.material; }
-        }
-    }
-
-    void HandleCarrierDeath()
-    {
-        Despawn();
-    }
-
-    void Despawn()
-    {
-        if (ProjectilePool.Instance)
-            ProjectilePool.Instance.Recycle(this);
-        else
-            Destroy(gameObject);
-    }
-
-    static void DisableAllColliders(GameObject go)
-    {
-        var cols = go.GetComponentsInChildren<Collider>(true);
-        foreach (var c in cols) c.enabled = false;
     }
 
     static void EnableAllColliders(GameObject go)

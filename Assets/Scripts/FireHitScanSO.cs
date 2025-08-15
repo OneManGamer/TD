@@ -14,67 +14,71 @@ public class FireHitScanSO : FireBehaviourSO
     [Header("Line FX")]
     public bool drawLine = true;
     public float lineDuration = 0.05f;
-    public float lineWidth = 0.035f;
-    public Material lineMaterial;       // assign in inspector to avoid defaulting
-    static Material _defaultLineMat;    // cached once, no per-shot alloc
+    public float lineWidth = 0.05f;
+    public Material lineMaterial;
 
-    public override void FireTick(TowerShooter shooter, Transform target)
+    static readonly RaycastHit[] _hitsBuf = new RaycastHit[64];
+    static Material _defaultLineMat;
+
+    // Your base class requires this signature per compiler error.
+    public override void FireTick(TowerShooter shooter, Transform pivot)
     {
-        if (!shooter || !shooter.firePoint || !target) return;
+        if (!shooter) return;
 
-        Vector3 from = shooter.firePoint.position;
-        Vector3 dir  = (target.position + Vector3.up * 0.6f - from).normalized;
+        var origin = pivot ? pivot.position
+                    : shooter.firePoint ? shooter.firePoint.position
+                    : shooter.transform.position;
 
-        RaycastHit[] hits;
-        int hitCount = 0;
+        var fwd = pivot ? pivot.forward
+                 : shooter.firePoint ? shooter.firePoint.forward
+                 : shooter.transform.forward;
 
+        int count = 0;
         if (radius <= 0f)
         {
-            if (Physics.Raycast(from, dir, out var hit, range, hitMask, QueryTriggerInteraction.Ignore))
-            {
-                hits = new[] { hit };
-                hitCount = 1;
-            }
-            else
-            {
-                hits = System.Array.Empty<RaycastHit>();
-            }
+            count = Physics.RaycastNonAlloc(origin, fwd, _hitsBuf, range, hitMask, QueryTriggerInteraction.Ignore);
         }
         else
         {
-            hits = Physics.SphereCastAll(from, radius, dir, range, hitMask, QueryTriggerInteraction.Ignore)
-                   .OrderBy(h => h.distance).ToArray();
-            hitCount = hits.Length;
+            count = Physics.SphereCastNonAlloc(origin, radius, fwd, _hitsBuf, range, hitMask, QueryTriggerInteraction.Ignore);
         }
 
-        if (hitCount > 0)
+        if (count > 0)
         {
-            int remaining = (pierceCount <= 0) ? 1 : (pierceCount + 1);
-            for (int i = 0; i < hitCount && remaining > 0; i++, remaining--)
+            var hits = _hitsBuf.Take(count)
+                .OrderBy(h => h.distance)
+                .ToArray();
+
+            int remaining = pierceCount <= 0 ? 1 : (pierceCount + 1);
+            float dmg = shooter.definition ? shooter.definition.baseDamage : 10f;
+            DamageType type = shooter.definition ? shooter.definition.damageType : DamageType.Physical;
+
+            for (int i = 0; i < hits.Length && remaining > 0; i++, remaining--)
             {
-                var info = new DamageInfo
-                {
-                    amount = shooter.definition ? shooter.definition.baseDamage : 10f,
-                    type = shooter.definition ? shooter.definition.damageType : DamageType.Physical,
-                    critMult = shooter.RollCrit(), // 1f or >1f
-                    source = shooter.gameObject,
-                    hitPoint = hits[i].point
-                };
-                Combat.ApplyHit(hits[i].collider, info);
+                CombatIntegrationAPI.ApplyHit(
+                    shooter.gameObject,
+                    hits[i].collider,
+                    dmg,
+                    type,
+                    hits[i].point,
+                    hits[i].normal
+                );
             }
         }
 
         // Visual
         if (drawLine)
         {
-            var go = new GameObject("HitscanLine");
+            var go = new GameObject("HitscanLine") { hideFlags = HideFlags.HideAndDontSave };
             var lr = go.AddComponent<LineRenderer>();
             lr.positionCount = 2;
-            lr.SetPositions(new[] { from, from + dir * range });
-            lr.startWidth = lr.endWidth = lineWidth;
+            lr.SetPosition(0, origin);
+            lr.SetPosition(1, origin + fwd * range);
+            lr.startWidth = lineWidth;
+            lr.endWidth = lineWidth;
+            lr.useWorldSpace = true;
 
-            // Use assigned material or a cached default (no per-shot new Material/Shader.Find)
-            if (lineMaterial)
+            if (lineMaterial != null)
             {
                 lr.sharedMaterial = lineMaterial;
             }
