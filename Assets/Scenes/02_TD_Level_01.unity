@@ -666,8 +666,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6abf013377fd1d042a93ee1daec6668c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  enemyPrefab: {fileID: 4589600794841658612, guid: 3df10c957f829d7479a2846cab69b13f, type: 3}
-  totalEnemies: 30
+  enemyPrefab: {fileID: 4434995877862365056, guid: 3df10c957f829d7479a2846cab69b13f, type: 3}
+  totalEnemies: 50
   groupSize: 2
   intraDelay: 0.1
   groupInterval: 2
