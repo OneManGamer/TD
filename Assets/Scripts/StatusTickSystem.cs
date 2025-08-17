@@ -1,93 +1,168 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using UnityEngine;
-using TD.Combat;
 
-/// <summary>
-/// Applies periodic damage based on active status tags without assuming exact method names on StatusController.
-/// Uses reflection to support variants like Has/Contains and GetStacks/GetCount.
-/// </summary>
-[RequireComponent(typeof(StatusController))]
-public class StatusTickSystem : MonoBehaviour
+namespace TD.Combat
 {
-    [Serializable]
-    public class TagDps
+  /// <summary>
+  /// Applies periodic damage (DPS) while specific StatusTagSO's are present on a StatusController.
+  /// - Each entry has its own tick interval.
+  /// - Supports per-stack scaling with diminishing returns.
+  /// - Uses CombatIntegrationAPI so resistances, etc. still apply.
+  /// Attach this near/with the target's StatusController.
+  /// </summary>
+  public class StatusTickSystem : MonoBehaviour
+  {
+    public enum StackScalingMode
     {
-        public StatusTagSO tag;
-        public float dps = 0f;
-        public bool scaleByStacks = true;
-        public DamageType damageType = DamageType.Physical;
+      None,             // no extra damage from stacks
+      Linear,           // multiplier = stacks (original simple mode)
+      Diminishing       // 1 + sum( baseBonusPerStack * diminishing^(k-1) ) for each extra stack
     }
 
-    [SerializeField] private List<TagDps> entries = new List<TagDps>(4);
+    [Serializable]
+    public class TickEntry
+    {
+      public StatusTagSO tag;
 
-    StatusController _status;
+      [Tooltip("Damage per second while this tag is present (pre-resistance).")]
+      public float dps = 4f;
+
+      [Tooltip("Seconds between ticks. Damage per tick = dps * tickInterval * stackMultiplier.")]
+      public float tickInterval = 0.5f;
+
+      [Tooltip("Damage type applied for these ticks.")]
+      public DamageType damageType = DamageType.Fire;
+
+      [Header("Stack Scaling")]
+      public StackScalingMode scaling = StackScalingMode.Diminishing;
+
+      [Tooltip("For Linear: multiplier = stacks. For Diminishing: extra bonus % per stack (as 0.25 = +25% each, before diminishing).")]
+      [Range(0f, 5f)] public float baseBonusPerStack = 0.25f; // used in Diminishing
+
+      [Tooltip("Diminishing factor applied to each subsequent stack's bonus. 1 = no diminishing; 0.5 halves each additional stack's bonus.")]
+      [Range(0f, 1f)] public float diminishing = 0.8f;
+
+      [Tooltip("Clamp final stack multiplier to avoid runaway values. 0 or less = no clamp.")]
+      public float maxStackMultiplier = 0f; // 0 = unlimited
+    }
+
+    [Tooltip("Define which tags cause periodic damage and how they tick.")]
+    public List<TickEntry> entries = new List<TickEntry>();
+
+    [Tooltip("Optional: log every tick to the Console.")]
+    public bool debugLogs = false;
+
+    StatusController _controller;
     IDamageable _damageable;
+    GameObject _targetGO;
 
-    // cached reflection
-    static MethodInfo _miHas;
-    static MethodInfo _miContains;
-    static MethodInfo _miGetStacks;
-    static MethodInfo _miGetCount;
+    float[] _accum;
 
     void Awake()
     {
-        _status = GetComponent<StatusController>();
-        _damageable = GetComponentInParent<IDamageable>();
+      _controller = GetComponentInParent<StatusController>();
+      _damageable = GetComponentInParent<IDamageable>();
+      _targetGO = _damageable != null ? ((MonoBehaviour)_damageable).gameObject : gameObject;
 
-        var t = typeof(StatusController);
-        _miHas       = t.GetMethod("Has",       BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(StatusTagSO) }, null);
-        _miContains  = t.GetMethod("Contains",  BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(StatusTagSO) }, null);
-        _miGetStacks = t.GetMethod("GetStacks", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(StatusTagSO) }, null);
-        _miGetCount  = t.GetMethod("GetCount",  BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, new[] { typeof(StatusTagSO) }, null);
+      if (_controller == null)
+        Debug.LogWarning("[StatusTickSystem] No StatusController found in parent chain. Ticks will not apply.");
+      if (_damageable == null)
+        Debug.LogWarning("[StatusTickSystem] No IDamageable found in parent chain. Ticks will not apply.");
+
+      ResizeAccum();
+    }
+
+    void OnValidate()
+    {
+      if (_accum == null || (entries != null && _accum.Length != entries.Count))
+        ResizeAccum();
+    }
+
+    void ResizeAccum()
+    {
+      int n = entries != null ? entries.Count : 0;
+      _accum = new float[n];
     }
 
     void Update()
     {
-        if (_status == null || _damageable == null) return;
-        float dt = Time.deltaTime;
-        if (dt <= 0f) return;
+      if (_controller == null || _damageable == null || entries == null || entries.Count == 0) return;
+      if (_accum == null || _accum.Length != entries.Count) ResizeAccum();
 
-        float total = 0f;
-        DamageType lastType = DamageType.Physical; // used only if we apply a single blended tick
+      float dt = Time.deltaTime;
 
-        for (int i = 0; i < entries.Count; i++)
+      for (int i = 0; i < entries.Count; i++)
+      {
+        var e = entries[i];
+        if (e == null || e.tag == null || e.tickInterval <= 0f || e.dps <= 0f) continue;
+
+        if (!_controller.Has(e.tag))
         {
-            var e = entries[i];
-            if (e.tag == null) continue;
-
-            int stacks = GetStacksSafe(_status, e.tag);
-            bool present = stacks > 0 || HasSafe(_status, e.tag);
-            if (!present) continue;
-
-            int mult = e.scaleByStacks ? Math.Max(1, stacks) : 1;
-            total += e.dps * mult * dt;
-            lastType = e.damageType; // note: if multiple types are present, we just use the last one for the blended tick
+          _accum[i] = 0f;
+          continue;
         }
 
-        if (total > 0f)
+        _accum[i] += dt;
+
+        while (_accum[i] >= e.tickInterval)
         {
-            var ctx = new HitContext(gameObject, gameObject, lastType, transform.position, Vector3.up);
-            CombatIntegrationAPI.ApplyHit(gameObject, gameObject, total, lastType, in ctx);
+          _accum[i] -= e.tickInterval;
+
+          int stacks = Mathf.Max(1, _controller.GetStacks(e.tag));
+          float stackMult = ComputeStackMultiplier(e, stacks);
+
+          float dmg = e.dps * e.tickInterval * stackMult;
+
+          var ctx = new HitContext(
+            source: gameObject,
+            target: _targetGO,
+            damageType: e.damageType,
+            hitPoint: _targetGO.transform.position,
+            hitNormal: Vector3.up,
+            isCrit: false,
+            critMultiplier: 1f,
+            userData: "StatusTick"
+          );
+
+          CombatIntegrationAPI.ApplyHit(gameObject, _targetGO, dmg, e.damageType, in ctx);
+
+          if (debugLogs)
+          {
+            Debug.Log($"[StatusTick] {e.tag.name} stacks={stacks} mult={stackMult:0.###} dmg={dmg:0.###} type={e.damageType}");
+          }
         }
+      }
     }
 
-    static bool HasSafe(StatusController sc, StatusTagSO tag)
+    static float ComputeStackMultiplier(TickEntry e, int stacks)
     {
-        if (sc == null || tag == null) return false;
-        if (_miHas != null)      return (bool)_miHas.Invoke(sc, new object[] { tag });
-        if (_miContains != null) return (bool)_miContains.Invoke(sc, new object[] { tag });
-        // If there is a stacks method, treat stacks > 0 as present
-        int stacks = GetStacksSafe(sc, tag);
-        return stacks > 0;
-    }
+      if (stacks <= 0) return 0f;
 
-    static int GetStacksSafe(StatusController sc, StatusTagSO tag)
-    {
-        if (sc == null || tag == null) return 0;
-        if (_miGetStacks != null) return (int)_miGetStacks.Invoke(sc, new object[] { tag });
-        if (_miGetCount  != null) return (int)_miGetCount.Invoke(sc, new object[] { tag });
-        return 0;
+      switch (e.scaling)
+      {
+        case StackScalingMode.None:
+          return 1f;
+
+        case StackScalingMode.Linear:
+          return stacks;
+
+        case StackScalingMode.Diminishing:
+          // Baseline 1x at 1 stack. Each additional stack adds a decayed bonus.
+          int extra = Mathf.Max(0, stacks - 1);
+          float bonus = 0f;
+          float add = Mathf.Max(0f, e.baseBonusPerStack);
+          float decay = Mathf.Clamp01(e.diminishing);
+          for (int i = 0; i < extra; i++)
+          {
+            bonus += add;
+            add *= decay;
+          }
+          float mult = 1f + bonus;
+          if (e.maxStackMultiplier > 0f) mult = Mathf.Min(mult, e.maxStackMultiplier);
+          return mult;
+      }
+      return 1f;
     }
+  }
 }

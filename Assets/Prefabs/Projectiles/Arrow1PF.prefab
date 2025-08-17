@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 3831086613598590719}
   - component: {fileID: 3856641697817260516}
   - component: {fileID: 4257404705940903222}
+  - component: {fileID: -3042536887055956711}
   m_Layer: 8
   m_Name: Arrow1PF
   m_TagString: Projectile
@@ -134,6 +135,21 @@ MonoBehaviour:
   stickDepth: 0.06
   embedJitterDegrees: 4
   ignoreAfterStick: 1
-  compensateParentScale: 1
+  allowStickToWorld: 1
+  worldStickLifetime: 3
   orientToVelocity: 1
-  sourcePrefab: {fileID: 0}
+  instantiateMaterialsOnStick: 1
+--- !u!114 &-3042536887055956711
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5401277512320582260}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 67cae4932adcf1b4cb640b03b1f9a478, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  effects:
+  - {fileID: 11400000, guid: 09c490bb5ada7ae44a716d0a7003e8e1, type: 2}

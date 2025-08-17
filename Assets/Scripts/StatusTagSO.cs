@@ -3,7 +3,7 @@ using UnityEngine;
 namespace TD.Combat
 {
   /// <summary>
-  /// Data-only status tag definition.  Other systems decide what a tag does.
+  /// Data-only status tag definition. Other systems decide what a tag does.
   /// </summary>
   [CreateAssetMenu(menuName = "TD/Status/Status Tag", fileName = "StatusTag")]
   public class StatusTagSO : ScriptableObject
@@ -14,13 +14,16 @@ namespace TD.Combat
     [Tooltip("Default duration in seconds when no override is provided.")]
     public float DefaultDuration = 3f;
 
+    [Tooltip("If > 0, remaining time is capped to this when reapplying/stacking (extensions will not exceed this).")]
+    public float MaxDurationCap = 0f; // 0 or less = no cap
+
     [Tooltip("If true, multiple stacks can be applied.")]
     public bool Stackable = false;
 
     [Tooltip("Maximum stacks if stackable.")]
     public int MaxStacks = 1;
 
-    [Tooltip("Optional exclusivity group.  Tags in the same group replace each other.")]
+    [Tooltip("Optional exclusivity group. Tags in the same group replace each other.")]
     public string ExclusiveGroup = "";
   }
 

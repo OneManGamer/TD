@@ -13,7 +13,8 @@ MonoBehaviour:
   m_Name: Frozen
   m_EditorClassIdentifier: 
   TagId: Frozen
-  DefaultDuration: 1
+  DefaultDuration: 2
+  MaxDurationCap: 2
   Stackable: 0
   MaxStacks: 1
   ExclusiveGroup: Temperature

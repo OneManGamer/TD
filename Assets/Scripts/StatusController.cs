@@ -5,7 +5,7 @@ using UnityEngine;
 namespace TD.Combat
 {
   /// <summary>
-  /// Holds active status tags with durations and stacks.  Attach to enemies.
+  /// Holds active status tags with durations and stacks. Attach to enemies.
   /// </summary>
   public class StatusController : MonoBehaviour
   {
@@ -26,6 +26,7 @@ namespace TD.Combat
 
     private readonly List<ActiveStatus> _statuses = new List<ActiveStatus>();
 
+    // -------- Query --------
     public bool HasTag(StatusTagSO tag)
     {
       if (tag == null) return false;
@@ -42,6 +43,19 @@ namespace TD.Combat
       return 0;
     }
 
+    // Convenience aliases
+    public bool Has(StatusTagSO tag)      => HasTag(tag);
+    public bool Contains(StatusTagSO tag) => HasTag(tag);
+    public int  GetCount(StatusTagSO tag) => GetStacks(tag);
+
+    // Simple Add overloads for tools/tests
+    public void Add(StatusTagSO tag, int stacks = 1) =>
+      Apply(new StatusApplication(tag, -1f, stacks));
+
+    public void Add(StatusTagSO tag, float durationOverride, int stacks = 1) =>
+      Apply(new StatusApplication(tag, durationOverride, stacks));
+
+    // -------- Mutators --------
     public void ConsumeTag(StatusTagSO tag)
     {
       if (tag == null) return;
@@ -59,10 +73,12 @@ namespace TD.Combat
     {
       if (app.tag == null) return;
 
-      float dur = app.durationOverride > 0f ? app.durationOverride : Mathf.Max(0.01f, app.tag.DefaultDuration);
-      int stacks = Mathf.Max(1, app.stacks);
+      float baseDur = app.durationOverride > 0f ? app.durationOverride : Mathf.Max(0.01f, app.tag.DefaultDuration);
+      float cap     = app.tag.MaxDurationCap;
+      float maxDur  = cap > 0f ? cap : baseDur;
+      int addStacks = Mathf.Max(1, app.stacks);
 
-      // Exclusivity handling.
+      // Exclusivity: remove other tags in same group
       if (!string.IsNullOrEmpty(app.tag.ExclusiveGroup))
       {
         for (int i = _statuses.Count - 1; i >= 0; i--)
@@ -75,26 +91,32 @@ namespace TD.Combat
         }
       }
 
-      // Update existing or add new.
+      // Update existing or add new
       for (int i = 0; i < _statuses.Count; i++)
       {
         if (_statuses[i].tag == app.tag)
         {
           if (app.tag.Stackable)
           {
-            _statuses[i].stacks = Mathf.Clamp(_statuses[i].stacks + stacks, 1, Mathf.Max(1, app.tag.MaxStacks));
-            _statuses[i].remaining = Mathf.Max(_statuses[i].remaining, dur);
+            int maxStacks = Mathf.Max(1, app.tag.MaxStacks);
+            _statuses[i].stacks = Mathf.Clamp(_statuses[i].stacks + addStacks, 1, maxStacks);
+
+            // REFRESH to max duration (not add)
+            _statuses[i].remaining = maxDur;
           }
           else
           {
             _statuses[i].stacks = 1;
-            _statuses[i].remaining = dur;
+            _statuses[i].remaining = maxDur;
           }
           return;
         }
       }
 
-      _statuses.Add(new ActiveStatus(app.tag, dur, app.tag.Stackable ? Mathf.Min(stacks, Mathf.Max(1, app.tag.MaxStacks)) : 1));
+      // New entry
+      int startStacks = app.tag.Stackable ? Mathf.Min(addStacks, Mathf.Max(1, app.tag.MaxStacks)) : 1;
+      float startRemaining = Mathf.Min(baseDur, cap > 0f ? cap : baseDur);
+      _statuses.Add(new ActiveStatus(app.tag, startRemaining, startStacks));
     }
 
     public void ApplyMany(IList<StatusApplication> apps)

@@ -13,11 +13,13 @@ namespace TD.Combat.EditorTools
       string root = "Assets/TD/Combat/Data";
       string statusDir = $"{root}/Status";
       string rulesDir = $"{root}/Rules";
+      string templatesDir = $"{root}/Templates";
       string resDir = "Assets/Resources/TD";
 
       EnsureDir(root);
       EnsureDir(statusDir);
       EnsureDir(rulesDir);
+      EnsureDir(templatesDir);
       EnsureDir(resDir);
 
       // Create status tags.
@@ -120,17 +122,18 @@ namespace TD.Combat.EditorTools
 
       // Create database in Resources so SynergyService can auto-load it.
       var db = ScriptableObject.CreateInstance<SynergyDatabaseSO>();
-      db.rules = list;
+      db.rules = list; // keep as List if your SO expects List<SynergyRuleSO>
       AssetDatabase.CreateAsset(db, $"{resDir}/SynergyDatabase.asset");
 
-      // Create a neutral resistance profile as a template.
+      // Create a neutral resistance profile as a template (array field).
       var rp = ScriptableObject.CreateInstance<DamageResistanceSO>();
-      rp.entries = new List<DamageResistanceSO.Entry>();
+      var entries = new List<DamageResistanceSO.Entry>();
       foreach (DamageType t in System.Enum.GetValues(typeof(DamageType)))
       {
-        rp.entries.Add(new DamageResistanceSO.Entry { type = t, multiplier = 1f });
+        entries.Add(new DamageResistanceSO.Entry { type = t, multiplier = 1f });
       }
-      AssetDatabase.CreateAsset(rp, $"{root}/Templates/NeutralResistance.asset");
+      rp.entries = entries.ToArray();
+      AssetDatabase.CreateAsset(rp, $"{templatesDir}/NeutralResistance.asset");
 
       AssetDatabase.SaveAssets();
       AssetDatabase.Refresh();

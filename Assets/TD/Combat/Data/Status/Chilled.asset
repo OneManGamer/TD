@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   TagId: Chilled
   DefaultDuration: 4
-  Stackable: 0
-  MaxStacks: 1
+  MaxDurationCap: 6
+  Stackable: 1
+  MaxStacks: 3
   ExclusiveGroup: Temperature
